@@ -15,6 +15,7 @@
 
 
 import math
+import time
 
 import jax
 import jax.numpy as jnp
@@ -185,9 +186,15 @@ class FlaxWhisperPipline:
         )
         if not self.is_sharded:
             # if we're using pmap we need to manually replicate the input data across devices and gather the output tokens
+            params = freeze(self.params)
+            sharded_input_features = shard(input_features)
+            start_time = time.time()
             output_ids = self.p_generate(
-                freeze(self.params), shard(input_features), forced_decoder_ids, return_timestamps
-            ).sequences
+                params, sharded_input_features, forced_decoder_ids, return_timestamps
+            ).sequences.block_until_ready()
+            end_time = time.time()
+            print(f"{(end_time - start_time) * 1000:.2f}")
+            
             output_ids = jax.device_get(output_ids.reshape(-1, self.max_length))
         else:
             # pjit handles replication / gathering for us auto-magically
